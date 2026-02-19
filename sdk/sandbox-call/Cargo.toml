@@ -1,0 +1,17 @@
+[package]
+name = "sandbox-call"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "sandbox-call"
+path = "src/main.rs"
+
+[dependencies]
+serde_json.workspace = true
+anyhow.workspace = true
+clap.workspace = true
+
+tokio = { workspace = true, features = ["net", "io-util", "rt"] }

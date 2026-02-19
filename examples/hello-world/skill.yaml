@@ -1,0 +1,22 @@
+name: hello-world
+version: 1.0.0
+description: A simple hello world skill demonstrating the sandbox
+author: corral-examples
+entry: ./run.sh
+runtime: bash
+
+permissions:
+  fs:
+    read:
+      - $SKILL_DIR/**
+    write:
+      - $WORK_DIR/**
+      - $DATA_DIR/**
+  
+  network:
+    allow:
+      - httpbin.org:443
+  
+  env:
+    - USER
+    - LANG
