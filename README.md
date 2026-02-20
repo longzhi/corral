@@ -118,9 +118,27 @@ sandbox-call notifications.send --title "Done!" --body "List updated"
 
 | Platform | Mechanism | Status |
 |----------|-----------|--------|
-| **Linux** | `bubblewrap` (namespaces, no root needed) | ✅ Implemented |
-| **macOS** | `DYLD_INSERT_LIBRARIES` + libc interpose | ✅ Implemented |
+| **Linux** | `bubblewrap` or `LD_PRELOAD` (libsandbox.so) | ✅ Implemented |
+| **macOS** | `DYLD_INSERT_LIBRARIES` (libsandbox.dylib) | ✅ Implemented |
 | **Windows** | Restricted Token + Job Objects + Detours | 🚧 Planned |
+
+#### libsandbox — C Interposition Layer
+
+For macOS and Linux (when bwrap is unavailable), Corral uses **libsandbox** — a lightweight C library that intercepts libc calls to enforce file/network/exec policies.
+
+**Features:**
+- Intercepts `open()`, `connect()`, `execve()`, `dlopen()`, and more
+- JSON policy loaded from environment variables
+- Optional broker communication for audit
+- Thread-safe, memory-safe (~1,300 lines of C)
+
+**Build:**
+```bash
+cd libsandbox && make       # Builds libsandbox.dylib (macOS) or libsandbox.so (Linux)
+cd libsandbox && make test  # Run test suite
+```
+
+See [libsandbox/README.md](libsandbox/README.md) for details.
 
 ## Development
 

@@ -1,0 +1,13 @@
+# Build artifacts
+*.dylib
+*.so
+*.o
+*.dSYM
+
+# Test binaries
+tests/test_sandbox
+tests/test_open
+tests/test_debug
+
+# macOS
+.DS_Store

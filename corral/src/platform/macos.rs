@@ -36,6 +36,51 @@ impl MacOSRuntime {
             data_dir,
         })
     }
+
+    /// Serialize manifest permissions to JSON policy for libsandbox
+    fn serialize_policy(manifest: &Manifest) -> Result<String> {
+        use serde_json::json;
+
+        let mut read_paths = Vec::new();
+        let mut write_paths = Vec::new();
+        let mut network_allow = Vec::new();
+        let mut exec_paths = Vec::new();
+
+        // File system permissions
+        if let Some(fs) = &manifest.permissions.fs {
+            if let Some(read) = &fs.read {
+                read_paths.extend(read.iter().cloned());
+            }
+            if let Some(write) = &fs.write {
+                write_paths.extend(write.iter().cloned());
+            }
+        }
+
+        // Network permissions
+        if let Some(network) = &manifest.permissions.network {
+            if let Some(allow) = &network.allow {
+                network_allow.extend(allow.iter().cloned());
+            }
+        }
+
+        // Exec permissions
+        if let Some(exec) = &manifest.permissions.exec {
+            exec_paths.extend(exec.iter().cloned());
+        }
+
+        let policy = json!({
+            "fs": {
+                "read": read_paths,
+                "write": write_paths
+            },
+            "network": {
+                "allow": network_allow
+            },
+            "exec": exec_paths
+        });
+
+        Ok(policy.to_string())
+    }
 }
 
 #[async_trait::async_trait]
@@ -70,13 +115,20 @@ impl Runtime for MacOSRuntime {
         // Essential system variables
         cmd.env("PATH", "/usr/bin:/bin:/usr/sbin:/sbin");
 
-        // TODO: DYLD_INSERT_LIBRARIES with libsandbox.dylib
-        // For Phase 1, we rely on broker-based isolation only
-        // let libsandbox = "/path/to/libsandbox.dylib";
-        // if Path::new(libsandbox).exists() {
-        //     cmd.env("DYLD_INSERT_LIBRARIES", libsandbox);
-        //     cmd.env("DYLD_FORCE_FLAT_NAMESPACE", "1");
-        // }
+        // libsandbox interposition (Phase 2)
+        let libsandbox = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join("libsandbox/libsandbox.dylib");
+        
+        if libsandbox.exists() {
+            // Serialize policy to JSON for libsandbox
+            let policy_json = Self::serialize_policy(&self.manifest)?;
+            
+            cmd.env("DYLD_INSERT_LIBRARIES", &libsandbox);
+            cmd.env("DYLD_FORCE_FLAT_NAMESPACE", "1");
+            cmd.env("SANDBOX_POLICY", policy_json);
+        }
 
         // Process group isolation
         use nix::unistd::{setpgid, Pid};
