@@ -13,6 +13,7 @@ mod stub;
 
 /// Reminder data structure
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct Reminder {
     pub id: String,
     pub title: String,
@@ -31,6 +32,7 @@ pub struct Reminder {
 
 /// Parameters for listing reminders
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct ListParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub list: Option<String>,
@@ -40,6 +42,7 @@ pub struct ListParams {
 
 /// Parameters for adding a reminder
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct AddParams {
     pub list: String,
     pub title: String,
@@ -54,6 +57,7 @@ pub struct AddParams {
 
 /// Parameters for updating a reminder
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct UpdateParams {
     pub id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -69,6 +73,7 @@ pub struct UpdateParams {
 
 /// Parameters for completing/deleting a reminder
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct IdParams {
     pub id: String,
 }
