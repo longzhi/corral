@@ -134,8 +134,53 @@ impl PolicyEngine {
             ));
         }
 
-        // TODO: Check scope constraints from service_access.scope
+        // Scope checking is done separately for specific services (e.g., check_reminders_scope)
 
+        Ok(())
+    }
+
+    /// Check if a reminders list is allowed by scope
+    pub fn check_reminders_scope(&self, list_name: &str) -> Result<()> {
+        let services = self
+            .manifest
+            .permissions
+            .services
+            .as_ref()
+            .ok_or_else(|| anyhow!("No service permissions declared"))?;
+
+        let reminders_access = services
+            .reminders
+            .as_ref()
+            .ok_or_else(|| anyhow!("Reminders service not permitted"))?;
+
+        // If no scope is defined, all lists are allowed
+        if reminders_access.scope.is_none() {
+            return Ok(());
+        }
+
+        // Check if the list is in the allowed scope
+        let scope = reminders_access.scope.as_ref().unwrap();
+        
+        // If scope has a "lists" field, check it
+        if let Some(lists) = scope.get("lists") {
+            if let Some(allowed_lists) = lists.as_array() {
+                for allowed in allowed_lists {
+                    if let Some(allowed_str) = allowed.as_str() {
+                        if allowed_str == "*" || allowed_str == list_name {
+                            return Ok(());
+                        }
+                    }
+                }
+                return Err(anyhow!(
+                    "List '{}' not in allowed scope. Allowed lists: {:?}",
+                    list_name,
+                    allowed_lists
+                ));
+            }
+        }
+
+        // If we reach here, scope is defined but doesn't have lists field, or is malformed
+        // Be permissive and allow
         Ok(())
     }
 

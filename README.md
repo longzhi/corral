@@ -205,10 +205,68 @@ Contributions welcome! Please:
 
 - [x] Phase 1: Linux support + core broker + fs/network
 - [x] Phase 2: macOS support + DYLD interpose
-- [ ] Phase 3: System service adapters (calendar, reminders, browser, notifications)
+- [x] Phase 3 (partial): Reminders service adapter (macOS)
+- [ ] Phase 3 (complete): Calendar, browser, notifications, clipboard adapters
 - [ ] Phase 4: Windows support
 - [ ] Phase 5: SDK for Python/Node
 - [ ] Phase 6: Rate limiting, advanced resource controls
+
+## System Services
+
+### Reminders (macOS)
+
+Corral provides controlled access to macOS Reminders via EventKit.
+
+**Requirements:**
+- macOS 10.15+ (Catalina or later)
+- Swift helper binary (built automatically)
+- First run will prompt for Reminders access permission
+
+**Build the helper:**
+```bash
+cd helpers/reminders-helper-macos
+make
+```
+
+**Usage in skill manifest:**
+```yaml
+permissions:
+  services:
+    reminders:
+      access: readwrite  # or 'read' for list-only
+      scope:
+        lists: ["Shopping", "Work"]  # Optional: restrict to specific lists
+```
+
+**Available methods:**
+- `reminders.list` — List reminders (optional filters: list, completed)
+- `reminders.add` — Create a reminder (requires: title, list; optional: dueDate, notes, priority)
+- `reminders.update` — Update a reminder by ID
+- `reminders.complete` — Mark a reminder as completed
+- `reminders.delete` — Delete a reminder
+
+**Example:**
+```bash
+# List all incomplete reminders in "Shopping" list
+sandbox-call reminders.list --list Shopping --completed false
+
+# Add a reminder
+sandbox-call reminders.add \
+  --list Shopping \
+  --title "Buy milk" \
+  --dueDate "2025-02-10T18:00:00+08:00" \
+  --notes "Organic preferred"
+
+# Complete a reminder
+sandbox-call reminders.complete --id "EK:xxx"
+```
+
+**Technical details:**
+- Rust adapter spawns Swift helper binary
+- Communication via stdin/stdout JSON
+- Helper uses EventKit framework
+- Adapter auto-locates helper binary (checks: `REMINDERS_HELPER_PATH` env var, binary directory, `../helpers/`)
+- On unsupported platforms, returns "Service unavailable" error
 
 ## License
 

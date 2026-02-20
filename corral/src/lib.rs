@@ -1,5 +1,6 @@
 //! Corral library exports for testing
 
+pub mod adapters;
 pub mod audit;
 pub mod broker;
 pub mod manifest;
