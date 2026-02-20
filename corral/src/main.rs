@@ -7,7 +7,6 @@ mod audit;
 mod broker;
 mod manifest;
 mod platform;
-mod policy;
 mod watchdog;
 
 #[derive(Parser)]
@@ -70,14 +69,14 @@ async fn main() -> Result<()> {
 
 async fn run_skill(skill_path: PathBuf, _args: Vec<String>) -> Result<()> {
     use crate::manifest::Manifest;
-    use crate::policy::PolicyEngine;
+    use corral_core::PolicyEngine;
 
     // Load and parse manifest
     let manifest = Manifest::load(&skill_path)?;
     tracing::info!("Loaded skill: {} v{}", manifest.name, manifest.version);
 
-    // Create policy engine
-    let policy = PolicyEngine::new(manifest.clone());
+    // Create policy engine from manifest permissions
+    let policy = PolicyEngine::new(manifest.to_permissions());
 
     // Setup sandbox environment
     let runtime = platform::create_runtime(&manifest, &skill_path)?;

@@ -1,7 +1,7 @@
 //! Network handlers
 
-use crate::policy::PolicyEngine;
 use anyhow::{anyhow, Result};
+use corral_core::PolicyEngine;
 use serde_json::Value;
 
 /// Handle network operations
@@ -34,7 +34,7 @@ async fn http(params: &Value, policy: &PolicyEngine) -> Result<Value> {
         .ok_or_else(|| anyhow!("Invalid URL: no port"))?;
 
     // Check policy
-    policy.check_network(host, port)?;
+    policy.check_network_result(host, port)?;
 
     // Build HTTP client
     let client = reqwest::Client::new();
@@ -103,7 +103,7 @@ async fn download(params: &Value, policy: &PolicyEngine) -> Result<Value> {
         .port_or_known_default()
         .ok_or_else(|| anyhow!("Invalid URL: no port"))?;
 
-    policy.check_network(host, port)?;
+    policy.check_network_result(host, port)?;
 
     // Check file write policy
     policy.check_file_write(save_to)?;

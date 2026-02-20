@@ -1,35 +1,31 @@
 [package]
-name = "corral"
+name = "corral-core"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
-description = "A capability-based sandbox for untrusted agent skills with fine-grained permission control"
+description = "Core library for Corral - capability-based sandboxing engine"
 repository.workspace = true
 homepage.workspace = true
 keywords = ["sandbox", "security", "capabilities", "permissions", "isolation"]
-categories = ["command-line-utilities", "development-tools", "os"]
+categories = ["development-tools", "os"]
 rust-version.workspace = true
 
 [dependencies]
-corral-core = { path = "../corral-core" }
-
 tokio.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-serde_yaml.workspace = true
 anyhow.workspace = true
 thiserror.workspace = true
-clap.workspace = true
 glob.workspace = true
-reqwest.workspace = true
-tracing.workspace = true
-tracing-subscriber.workspace = true
 
 nix = { version = "0.27", features = ["process", "signal"] }
 libc = "0.2"
-url = "2"
 async-trait = "0.1"
 dirs = "5"
 chrono = { version = "0.4", features = ["serde"] }
 which = "6"
+
+[dev-dependencies]
+tokio-test = "0.4"
+tempfile = "3"

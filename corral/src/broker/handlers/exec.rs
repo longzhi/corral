@@ -1,7 +1,7 @@
 //! Exec handler
 
-use crate::policy::PolicyEngine;
 use anyhow::{anyhow, Result};
+use corral_core::PolicyEngine;
 use serde_json::Value;
 
 /// Handle exec operations
@@ -19,7 +19,7 @@ async fn run(params: &Value, policy: &PolicyEngine) -> Result<Value> {
         .ok_or_else(|| anyhow!("Missing 'command' parameter"))?;
 
     // Check policy
-    policy.check_exec(command)?;
+    policy.check_exec_result(command)?;
 
     let args = params
         .get("args")

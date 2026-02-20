@@ -2,8 +2,8 @@
 
 use super::handlers;
 use super::jsonrpc::Request;
-use crate::policy::PolicyEngine;
 use anyhow::{anyhow, Result};
+use corral_core::PolicyEngine;
 use serde_json::Value;
 
 /// Route a JSON-RPC request to the appropriate handler

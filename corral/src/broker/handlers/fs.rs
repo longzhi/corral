@@ -1,7 +1,7 @@
 //! Filesystem handlers
 
-use crate::policy::PolicyEngine;
 use anyhow::{anyhow, Result};
+use corral_core::PolicyEngine;
 use serde_json::Value;
 use std::path::Path;
 

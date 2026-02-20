@@ -1,5 +1,5 @@
 [workspace]
-members = ["corral", "sdk/sandbox-call"]
+members = ["corral-core", "corral", "sdk/sandbox-call"]
 resolver = "2"
 
 [workspace.package]

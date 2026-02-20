@@ -44,6 +44,8 @@ permissions:
 
 #[test]
 fn test_policy_engine() {
+    use corral_core::PolicyEngine;
+
     let temp_dir = std::env::temp_dir().join("corral-test-policy");
     std::fs::create_dir_all(&temp_dir).unwrap();
 
@@ -58,24 +60,41 @@ runtime: bash
 permissions:
   fs:
     read:
-      - $SKILL_DIR/**
+      - "*.txt"
+      - config/**
   network:
     allow:
       - api.example.com:443
+  exec:
+    - curl
+  env:
+    - PATH
 "#;
 
     std::fs::write(temp_dir.join("skill.yaml"), manifest_content).unwrap();
 
     let manifest = corral::manifest::Manifest::load(&temp_dir).unwrap();
-    let policy = corral::policy::PolicyEngine::new(manifest);
+    let policy = PolicyEngine::new(manifest.to_permissions());
 
-    // Test file access
-    assert!(policy.check_file_read("test.txt").is_ok());
-    assert!(policy.check_file_read("/etc/passwd").is_err());
+    // Test basic checks
+    // Network check
+    assert!(policy.check_network("api.example.com", 443));
+    assert!(!policy.check_network("evil.com", 443));
 
-    // Test network access
-    assert!(policy.check_network("api.example.com", 443).is_ok());
-    assert!(policy.check_network("evil.com", 443).is_err());
+    // Exec check
+    assert!(policy.check_exec("curl"));
+    assert!(policy.check_exec("/usr/bin/curl")); // Path extraction works
+    assert!(!policy.check_exec("rm"));
+
+    // Env check
+    assert!(policy.check_env("PATH"));
+    assert!(!policy.check_env("SECRET"));
+
+    // File access with glob patterns
+    assert!(policy.check_path_read("test.txt"));
+    assert!(policy.check_path_read("readme.txt"));
+    assert!(policy.check_path_read("config/app.json"));
+    assert!(!policy.check_path_read("data/sensitive.db"));
 
     // Cleanup
     std::fs::remove_dir_all(&temp_dir).unwrap();

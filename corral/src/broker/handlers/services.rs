@@ -1,8 +1,8 @@
 //! Service adapter handlers
 
 use crate::adapters::reminders;
-use crate::policy::PolicyEngine;
 use anyhow::{anyhow, Result};
+use corral_core::PolicyEngine;
 use serde_json::{json, Value};
 
 /// Handle reminders service calls
@@ -12,7 +12,7 @@ pub async fn handle_reminders(
     policy: &PolicyEngine,
 ) -> Result<Value> {
     // Check policy - determines if service is allowed
-    policy.check_service("reminders", method, params)?;
+    policy.check_service_result("reminders", method, params)?;
 
     // Create adapter
     let adapter = reminders::create_adapter();
@@ -30,7 +30,7 @@ pub async fn handle_reminders(
 
             // Check scope if defined
             if let Some(list_name) = &list_params.list {
-                policy.check_reminders_scope(list_name)?;
+                policy.check_reminders_scope_result(list_name)?;
             }
 
             let reminders = adapter.list(list_params).await?;
@@ -41,7 +41,7 @@ pub async fn handle_reminders(
                 .map_err(|e| anyhow!("Invalid parameters for reminders.add: {}", e))?;
 
             // Check scope
-            policy.check_reminders_scope(&add_params.list)?;
+            policy.check_reminders_scope_result(&add_params.list)?;
 
             let reminder = adapter.add(add_params).await?;
             Ok(json!({ "reminder": reminder }))
@@ -74,7 +74,7 @@ pub async fn handle_reminders(
 /// Handle calendar service calls
 pub async fn handle_calendar(method: &str, params: &Value, policy: &PolicyEngine) -> Result<Value> {
     // Check policy
-    policy.check_service("calendar", method, params)?;
+    policy.check_service_result("calendar", method, params)?;
 
     // Return stub - service unavailable
     Err(anyhow!(
@@ -86,7 +86,7 @@ pub async fn handle_calendar(method: &str, params: &Value, policy: &PolicyEngine
 /// Handle browser service calls
 pub async fn handle_browser(method: &str, params: &Value, policy: &PolicyEngine) -> Result<Value> {
     // Check policy
-    policy.check_service("browser", method, params)?;
+    policy.check_service_result("browser", method, params)?;
 
     // Return stub - service unavailable
     Err(anyhow!(
@@ -102,7 +102,7 @@ pub async fn handle_notifications(
     policy: &PolicyEngine,
 ) -> Result<Value> {
     // Check policy
-    policy.check_service("notifications", method, params)?;
+    policy.check_service_result("notifications", method, params)?;
 
     // Return stub - service unavailable
     Err(anyhow!(
@@ -118,7 +118,7 @@ pub async fn handle_clipboard(
     policy: &PolicyEngine,
 ) -> Result<Value> {
     // Check policy
-    policy.check_service("clipboard", method, params)?;
+    policy.check_service_result("clipboard", method, params)?;
 
     // Return stub - service unavailable
     Err(anyhow!(

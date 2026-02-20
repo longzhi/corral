@@ -88,6 +88,160 @@ pub enum AccessLevel {
 }
 
 impl Manifest {
+    /// Convert manifest permissions to corral_core::Permissions
+    pub fn to_permissions(&self) -> corral_core::Permissions {
+        use corral_core::permissions::ServicePermission;
+        use std::collections::HashMap;
+
+        let mut fs_read = Vec::new();
+        let mut fs_write = Vec::new();
+        let mut network_allow = Vec::new();
+        let mut exec = Vec::new();
+        let mut env = Vec::new();
+        let mut services = HashMap::new();
+
+        // File system permissions
+        if let Some(fs) = &self.permissions.fs {
+            if let Some(read) = &fs.read {
+                fs_read.extend(read.iter().cloned());
+            }
+            if let Some(write) = &fs.write {
+                fs_write.extend(write.iter().cloned());
+            }
+        }
+
+        // Network permissions
+        if let Some(network) = &self.permissions.network {
+            if let Some(allow) = &network.allow {
+                network_allow.extend(allow.iter().cloned());
+            }
+        }
+
+        // Exec permissions
+        if let Some(exec_perms) = &self.permissions.exec {
+            exec.extend(exec_perms.iter().cloned());
+        }
+
+        // Env permissions
+        if let Some(env_perms) = &self.permissions.env {
+            env.extend(env_perms.iter().cloned());
+        }
+
+        // Service permissions
+        if let Some(service_perms) = &self.permissions.services {
+            if let Some(reminders) = &service_perms.reminders {
+                services.insert(
+                    "reminders".to_string(),
+                    ServicePermission {
+                        access: match reminders.access {
+                            AccessLevel::Read => "read".to_string(),
+                            AccessLevel::Write => "write".to_string(),
+                            AccessLevel::ReadWrite => "readwrite".to_string(),
+                            AccessLevel::Send => "send".to_string(),
+                            AccessLevel::Open => "open".to_string(),
+                        },
+                        scope: if let Some(scope) = &reminders.scope {
+                            serde_json::from_value(scope.clone()).unwrap_or_default()
+                        } else {
+                            HashMap::new()
+                        },
+                    },
+                );
+            }
+
+            if let Some(calendar) = &service_perms.calendar {
+                services.insert(
+                    "calendar".to_string(),
+                    ServicePermission {
+                        access: match calendar.access {
+                            AccessLevel::Read => "read".to_string(),
+                            AccessLevel::Write => "write".to_string(),
+                            AccessLevel::ReadWrite => "readwrite".to_string(),
+                            AccessLevel::Send => "send".to_string(),
+                            AccessLevel::Open => "open".to_string(),
+                        },
+                        scope: if let Some(scope) = &calendar.scope {
+                            serde_json::from_value(scope.clone()).unwrap_or_default()
+                        } else {
+                            HashMap::new()
+                        },
+                    },
+                );
+            }
+
+            if let Some(browser) = &service_perms.browser {
+                services.insert(
+                    "browser".to_string(),
+                    ServicePermission {
+                        access: match browser.access {
+                            AccessLevel::Read => "read".to_string(),
+                            AccessLevel::Write => "write".to_string(),
+                            AccessLevel::ReadWrite => "readwrite".to_string(),
+                            AccessLevel::Send => "send".to_string(),
+                            AccessLevel::Open => "open".to_string(),
+                        },
+                        scope: if let Some(scope) = &browser.scope {
+                            serde_json::from_value(scope.clone()).unwrap_or_default()
+                        } else {
+                            HashMap::new()
+                        },
+                    },
+                );
+            }
+
+            if let Some(notifications) = &service_perms.notifications {
+                services.insert(
+                    "notifications".to_string(),
+                    ServicePermission {
+                        access: match notifications.access {
+                            AccessLevel::Read => "read".to_string(),
+                            AccessLevel::Write => "write".to_string(),
+                            AccessLevel::ReadWrite => "readwrite".to_string(),
+                            AccessLevel::Send => "send".to_string(),
+                            AccessLevel::Open => "open".to_string(),
+                        },
+                        scope: if let Some(scope) = &notifications.scope {
+                            serde_json::from_value(scope.clone()).unwrap_or_default()
+                        } else {
+                            HashMap::new()
+                        },
+                    },
+                );
+            }
+
+            if let Some(clipboard) = &service_perms.clipboard {
+                services.insert(
+                    "clipboard".to_string(),
+                    ServicePermission {
+                        access: match clipboard.access {
+                            AccessLevel::Read => "read".to_string(),
+                            AccessLevel::Write => "write".to_string(),
+                            AccessLevel::ReadWrite => "readwrite".to_string(),
+                            AccessLevel::Send => "send".to_string(),
+                            AccessLevel::Open => "open".to_string(),
+                        },
+                        scope: if let Some(scope) = &clipboard.scope {
+                            serde_json::from_value(scope.clone()).unwrap_or_default()
+                        } else {
+                            HashMap::new()
+                        },
+                    },
+                );
+            }
+        }
+
+        let mut perms = corral_core::Permissions::builder()
+            .fs_read(fs_read)
+            .fs_write(fs_write)
+            .network_allow(network_allow)
+            .exec_allow(exec)
+            .env_allow(env)
+            .build();
+
+        perms.services = services;
+        perms
+    }
+
     /// Load manifest from skill directory
     pub fn load(skill_path: &Path) -> Result<Self> {
         let manifest_path = skill_path.join("skill.yaml");

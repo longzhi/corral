@@ -4,8 +4,8 @@ pub mod handlers;
 pub mod jsonrpc;
 pub mod router;
 
-use crate::policy::PolicyEngine;
 use anyhow::Result;
+use corral_core::PolicyEngine;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::net::{UnixListener, UnixStream};

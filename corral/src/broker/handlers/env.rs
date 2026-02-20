@@ -1,7 +1,7 @@
 //! Environment variable handler
 
-use crate::policy::PolicyEngine;
 use anyhow::{anyhow, Result};
+use corral_core::PolicyEngine;
 use serde_json::Value;
 
 /// Handle env operations
@@ -19,7 +19,7 @@ async fn get(params: &Value, policy: &PolicyEngine) -> Result<Value> {
         .ok_or_else(|| anyhow!("Missing 'name' parameter"))?;
 
     // Check policy
-    policy.check_env(name)?;
+    policy.check_env_result(name)?;
 
     // Get environment variable
     let value = std::env::var(name).ok();
