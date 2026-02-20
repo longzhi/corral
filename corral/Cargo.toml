@@ -4,6 +4,12 @@ version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
+description = "A capability-based sandbox for untrusted agent skills with fine-grained permission control"
+repository.workspace = true
+homepage.workspace = true
+keywords = ["sandbox", "security", "capabilities", "permissions", "isolation"]
+categories = ["command-line-utilities", "development-tools", "os"]
+rust-version.workspace = true
 
 [dependencies]
 tokio.workspace = true

@@ -8,6 +8,8 @@ edition = "2021"
 authors = ["Corral Contributors"]
 license = "MIT"
 repository = "https://github.com/yourusername/corral"
+homepage = "https://github.com/yourusername/corral"
+rust-version = "1.70"
 
 [workspace.dependencies]
 tokio = { version = "1", features = ["full"] }

@@ -78,19 +78,19 @@ pub struct IdParams {
 pub trait RemindersAdapter: Send + Sync {
     /// List reminders
     async fn list(&self, params: ListParams) -> Result<Vec<Reminder>>;
-    
+
     /// Add a reminder
     async fn add(&self, params: AddParams) -> Result<Reminder>;
-    
+
     /// Update a reminder
     async fn update(&self, params: UpdateParams) -> Result<Reminder>;
-    
+
     /// Mark a reminder as completed
     async fn complete(&self, params: IdParams) -> Result<Reminder>;
-    
+
     /// Delete a reminder
     async fn delete(&self, params: IdParams) -> Result<()>;
-    
+
     /// Check if this adapter is available
     fn is_available(&self) -> bool;
 }
@@ -101,7 +101,7 @@ pub fn create_adapter() -> Box<dyn RemindersAdapter> {
     {
         Box::new(macos::MacOSRemindersAdapter::new())
     }
-    
+
     #[cfg(not(target_os = "macos"))]
     {
         Box::new(stub::StubRemindersAdapter)

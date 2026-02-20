@@ -160,7 +160,7 @@ impl PolicyEngine {
 
         // Check if the list is in the allowed scope
         let scope = reminders_access.scope.as_ref().unwrap();
-        
+
         // If scope has a "lists" field, check it
         if let Some(lists) = scope.get("lists") {
             if let Some(allowed_lists) = lists.as_array() {
@@ -224,17 +224,17 @@ impl PolicyEngine {
 
     /// Check if path matches any glob pattern
     fn matches_any_pattern(&self, path: &str, patterns: &[String]) -> bool {
-        patterns.iter().any(|pattern| {
-            self.matches_pattern(path, pattern)
-        })
+        patterns
+            .iter()
+            .any(|pattern| self.matches_pattern(path, pattern))
     }
-    
+
     /// Check if a single path matches a pattern
     fn matches_pattern(&self, path: &str, pattern: &str) -> bool {
         // For patterns with variables, we need to map the path to the same space
         // E.g., if pattern is "$SKILL_DIR/**", only paths that would be under SKILL_DIR match
         // In Phase 1, we simulate by checking if the normalized path makes sense
-        
+
         if pattern.contains("$SKILL_DIR") {
             // For skill dir patterns, assume paths need to be relative or under skill dir
             // In reality, skill_path would be used here
@@ -271,7 +271,7 @@ impl PolicyEngine {
                 return glob.matches(path);
             }
         }
-        
+
         false
     }
 

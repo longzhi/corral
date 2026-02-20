@@ -251,10 +251,7 @@ impl Runtime for LinuxRuntime {
 
         cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
 
-        let output = cmd
-            .output()
-            .await
-            .context("Failed to execute skill")?;
+        let output = cmd.output().await.context("Failed to execute skill")?;
 
         // Cleanup work directory
         let _ = tokio::fs::remove_dir_all(&self.work_dir).await;

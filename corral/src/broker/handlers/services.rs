@@ -19,9 +19,7 @@ pub async fn handle_reminders(
 
     // Check if available on this platform
     if !adapter.is_available() {
-        return Err(anyhow!(
-            "Reminders service not available on this platform"
-        ));
+        return Err(anyhow!("Reminders service not available on this platform"));
     }
 
     // Route to appropriate method
@@ -29,43 +27,43 @@ pub async fn handle_reminders(
         "list" => {
             let list_params: reminders::ListParams = serde_json::from_value(params.clone())
                 .map_err(|e| anyhow!("Invalid parameters for reminders.list: {}", e))?;
-            
+
             // Check scope if defined
             if let Some(list_name) = &list_params.list {
                 policy.check_reminders_scope(list_name)?;
             }
-            
+
             let reminders = adapter.list(list_params).await?;
             Ok(json!({ "reminders": reminders }))
         }
         "add" => {
             let add_params: reminders::AddParams = serde_json::from_value(params.clone())
                 .map_err(|e| anyhow!("Invalid parameters for reminders.add: {}", e))?;
-            
+
             // Check scope
             policy.check_reminders_scope(&add_params.list)?;
-            
+
             let reminder = adapter.add(add_params).await?;
             Ok(json!({ "reminder": reminder }))
         }
         "update" => {
             let update_params: reminders::UpdateParams = serde_json::from_value(params.clone())
                 .map_err(|e| anyhow!("Invalid parameters for reminders.update: {}", e))?;
-            
+
             let reminder = adapter.update(update_params).await?;
             Ok(json!({ "reminder": reminder }))
         }
         "complete" => {
             let id_params: reminders::IdParams = serde_json::from_value(params.clone())
                 .map_err(|e| anyhow!("Invalid parameters for reminders.complete: {}", e))?;
-            
+
             let reminder = adapter.complete(id_params).await?;
             Ok(json!({ "reminder": reminder }))
         }
         "delete" => {
             let id_params: reminders::IdParams = serde_json::from_value(params.clone())
                 .map_err(|e| anyhow!("Invalid parameters for reminders.delete: {}", e))?;
-            
+
             adapter.delete(id_params).await?;
             Ok(json!({ "success": true }))
         }

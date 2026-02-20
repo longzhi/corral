@@ -77,13 +77,13 @@ impl MacOSRemindersAdapter {
                 if helper.exists() {
                     return helper;
                 }
-                
+
                 // Check in helpers/ subdirectory
                 let helper = parent.join("helpers").join("reminders-helper");
                 if helper.exists() {
                     return helper;
                 }
-                
+
                 // Check in ../helpers/reminders-helper-macos/
                 let helper = parent
                     .parent()
@@ -103,8 +103,8 @@ impl MacOSRemindersAdapter {
     /// Call the Swift helper with a request
     async fn call_helper(&self, request: HelperRequest) -> Result<HelperResponse> {
         // Serialize request
-        let request_json = serde_json::to_string(&request)
-            .context("Failed to serialize request")?;
+        let request_json =
+            serde_json::to_string(&request).context("Failed to serialize request")?;
 
         // Spawn helper process
         let mut child = Command::new(&self.helper_path)
@@ -156,7 +156,7 @@ impl MacOSRemindersAdapter {
             } else {
                 "Unknown error".to_string()
             };
-            
+
             return Err(anyhow!(
                 "Helper process exited with status {}: {}",
                 status.code().unwrap_or(-1),
@@ -165,8 +165,8 @@ impl MacOSRemindersAdapter {
         }
 
         // Parse response
-        let response: HelperResponse = serde_json::from_str(&response_line)
-            .context("Failed to parse response from helper")?;
+        let response: HelperResponse =
+            serde_json::from_str(&response_line).context("Failed to parse response from helper")?;
 
         // Check for errors in response
         if let Some(error) = response.error {

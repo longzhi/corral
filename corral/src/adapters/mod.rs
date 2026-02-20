@@ -12,13 +12,14 @@ use serde_json::Value;
 
 /// Base trait for service adapters
 #[async_trait]
+#[allow(dead_code)] // Will be used as more adapters are added
 pub trait ServiceAdapter: Send + Sync {
     /// Execute a method call on this service
     async fn execute(&self, method: &str, params: &Value) -> Result<Value>;
-    
+
     /// Check if this adapter is available on the current platform
     fn is_available(&self) -> bool;
-    
+
     /// Get the service name
     fn service_name(&self) -> &str;
 }

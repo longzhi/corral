@@ -4,6 +4,12 @@ version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
+description = "CLI SDK for calling Corral sandbox broker services from skill scripts"
+repository.workspace = true
+homepage.workspace = true
+keywords = ["sandbox", "sdk", "cli", "rpc"]
+categories = ["command-line-utilities", "api-bindings"]
+rust-version.workspace = true
 
 [[bin]]
 name = "sandbox-call"

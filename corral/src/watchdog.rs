@@ -16,14 +16,14 @@ impl Watchdog {
     /// Create a new watchdog
     pub fn new(manifest: Manifest) -> Self {
         let stopped = Arc::new(AtomicBool::new(false));
-        
-        // TODO: In Phase 1, watchdog is a stub
-        // Phase 3 will add:
+
+        // TODO: Watchdog implementation pending
+        // Future features:
         // - Timeout enforcement
         // - Memory monitoring
         // - CPU usage tracking
         // - Rate limiting
-        
+
         Self {
             manifest: Arc::new(manifest),
             stopped: stopped.clone(),

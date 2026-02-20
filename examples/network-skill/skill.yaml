@@ -1,0 +1,27 @@
+name: network-skill
+version: 1.0.0
+description: Demonstrates network permissions and HTTP requests
+author: corral-examples
+entry: ./run.sh
+runtime: bash
+
+permissions:
+  fs:
+    read:
+      - $SKILL_DIR/**
+      - $DATA_DIR/cache.json
+    write:
+      - $DATA_DIR/**
+  
+  network:
+    allow:
+      - api.github.com:443
+      - httpbin.org:443
+  
+  services:
+    notifications:
+      access: send
+  
+  env:
+    - LANG
+    - TZ

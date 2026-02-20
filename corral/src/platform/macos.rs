@@ -120,11 +120,11 @@ impl Runtime for MacOSRuntime {
             .parent()
             .unwrap()
             .join("libsandbox/libsandbox.dylib");
-        
+
         if libsandbox.exists() {
             // Serialize policy to JSON for libsandbox
             let policy_json = Self::serialize_policy(&self.manifest)?;
-            
+
             cmd.env("DYLD_INSERT_LIBRARIES", &libsandbox);
             cmd.env("DYLD_FORCE_FLAT_NAMESPACE", "1");
             cmd.env("SANDBOX_POLICY", policy_json);
