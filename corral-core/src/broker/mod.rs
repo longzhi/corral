@@ -211,7 +211,11 @@ fn create_socket_path() -> Result<PathBuf> {
         .or_else(|_| std::env::var("TMPDIR"))
         .unwrap_or_else(|_| "/tmp".to_string());
 
-    let socket_name = format!("corral-broker-{}.sock", std::process::id());
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let socket_name = format!("corral-broker-{}-{}.sock", std::process::id(), nanos);
     Ok(PathBuf::from(runtime_dir).join(socket_name))
 }
 
