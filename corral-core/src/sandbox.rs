@@ -16,7 +16,8 @@ pub struct SandboxConfig {
     pub data_dir: Option<PathBuf>,
     pub timeout: Duration,
     pub max_memory_mb: Option<u64>,
-    pub env_vars: HashMap<String, String>, // extra env to pass through
+    pub env_vars: HashMap<String, String>,
+    pub broker_socket: Option<PathBuf>,
 }
 
 /// Result of command execution
@@ -224,6 +225,11 @@ impl Sandbox {
             cmd.env("SANDBOX_POLICY_FILE", &policy_file);
         }
 
+        // Pass broker socket if configured
+        if let Some(ref socket_path) = self.config.broker_socket {
+            cmd.env("SANDBOX_SOCKET", socket_path);
+        }
+
         cmd.stdout(std::process::Stdio::piped());
         cmd.stderr(std::process::Stdio::piped());
 
@@ -279,6 +285,11 @@ impl Sandbox {
             cmd.env("SANDBOX_POLICY_FILE", &policy_file);
         }
 
+        // Pass broker socket if configured
+        if let Some(ref socket_path) = self.config.broker_socket {
+            cmd.env("SANDBOX_SOCKET", socket_path);
+        }
+
         cmd.stdout(std::process::Stdio::piped());
         cmd.stderr(std::process::Stdio::piped());
 
@@ -315,6 +326,7 @@ pub struct SandboxBuilder {
     timeout: Duration,
     max_memory_mb: Option<u64>,
     env_vars: HashMap<String, String>,
+    broker_socket: Option<PathBuf>,
 }
 
 impl Default for SandboxBuilder {
@@ -333,6 +345,7 @@ impl SandboxBuilder {
             timeout: Duration::from_secs(30),
             max_memory_mb: None,
             env_vars: HashMap::new(),
+            broker_socket: None,
         }
     }
 
@@ -412,6 +425,12 @@ impl SandboxBuilder {
         self
     }
 
+    /// Set broker socket path for service calls
+    pub fn broker_socket(mut self, path: impl Into<PathBuf>) -> Self {
+        self.broker_socket = Some(path.into());
+        self
+    }
+
     /// Build the Sandbox
     pub fn build(self) -> Result<Sandbox> {
         let work_dir = self
@@ -425,6 +444,7 @@ impl SandboxBuilder {
             timeout: self.timeout,
             max_memory_mb: self.max_memory_mb,
             env_vars: self.env_vars,
+            broker_socket: self.broker_socket,
         };
 
         Sandbox::new(config)

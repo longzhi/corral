@@ -11,6 +11,10 @@ keywords = ["sandbox", "security", "capabilities", "permissions", "isolation"]
 categories = ["development-tools", "os"]
 rust-version.workspace = true
 
+[features]
+default = []
+broker = ["tokio/net"]
+
 [dependencies]
 # Minimal dependencies - no heavy async runtime, no network
 tokio = { version = "1", features = ["process", "io-util", "time"] }

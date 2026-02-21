@@ -30,9 +30,15 @@ pub mod permissions;
 pub mod policy;
 pub mod sandbox;
 
+#[cfg(feature = "broker")]
+pub mod broker;
+
 // Re-exports for convenience
 pub use permissions::{
     FsPermissions, NetworkPermissions, Permissions, PermissionsBuilder, ServicePermission,
 };
 pub use policy::PolicyEngine;
 pub use sandbox::{ExecuteResult, Sandbox, SandboxBuilder, SandboxConfig};
+
+#[cfg(feature = "broker")]
+pub use broker::{BrokerConfig, BrokerHandle, BrokerStats, ServiceHandler, start_broker};
