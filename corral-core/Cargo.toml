@@ -23,5 +23,6 @@ glob.workspace = true
 async-trait = "0.1"
 
 [dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 tokio-test = "0.4"
 tempfile = "3"

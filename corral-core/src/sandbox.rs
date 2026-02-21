@@ -3,6 +3,7 @@
 use crate::permissions::Permissions;
 use crate::policy::PolicyEngine;
 use anyhow::{Context, Result};
+use serde_json::json;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
@@ -73,6 +74,8 @@ impl Sandbox {
     ) -> Result<ExecuteResult> {
         let start = Instant::now();
 
+        self.preflight_command(command)?;
+
         // Use platform-specific execution
         #[cfg(target_os = "linux")]
         let result = self.execute_linux(command, timeout).await?;
@@ -118,108 +121,112 @@ impl Sandbox {
         Ok(())
     }
 
+    fn preflight_command(&self, command: &str) -> Result<()> {
+        let command_heads = command
+            .split(|c| ['|', '&', ';', '\n'].contains(&c))
+            .filter_map(|seg| seg.split_whitespace().next());
+
+        for head in command_heads {
+            if !self.policy.check_exec(head) {
+                anyhow::bail!("Execution denied for command: {}", head);
+            }
+        }
+
+        if self.config.permissions.network.allow.is_empty()
+            && (command.contains("http://")
+                || command.contains("https://")
+                || command.contains(" curl ")
+                || command.starts_with("curl ")
+                || command.contains(" wget ")
+                || command.starts_with("wget "))
+        {
+            anyhow::bail!("Network access denied by sandbox policy");
+        }
+
+        for raw in command.split_whitespace() {
+            let token = raw.trim_matches(|c: char| {
+                matches!(c, '\'' | '"' | ',' | ')' | '(' | '[' | ']' | '{' | '}' | ';')
+            });
+            if token.starts_with('/')
+                && !self.policy.check_path_read(token)
+                && !self.policy.check_path_write(token)
+            {
+                anyhow::bail!("Path access denied for: {}", token);
+            }
+        }
+
+        Ok(())
+    }
+
+    fn serialize_policy(&self) -> Result<String> {
+        Ok(json!({
+            "fs": {
+                "read": self.config.permissions.fs.read,
+                "write": self.config.permissions.fs.write,
+            },
+            "network": {
+                "allow": self.config.permissions.network.allow,
+            },
+            "exec": self.config.permissions.exec,
+        })
+        .to_string())
+    }
+
+    #[cfg(target_os = "macos")]
+    fn libsandbox_path() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join("libsandbox/libsandbox.dylib")
+    }
+
+    #[cfg(target_os = "linux")]
+    fn libsandbox_path() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join("libsandbox/libsandbox.so")
+    }
+
     #[cfg(target_os = "linux")]
     async fn execute_linux(
         &self,
         command: &str,
         timeout: Duration,
     ) -> Result<(i32, String, String, bool)> {
+        use std::os::unix::fs::PermissionsExt;
         use tokio::process::Command;
         use tokio::time::timeout as tokio_timeout;
 
-        // Build bwrap command
-        let mut cmd = Command::new("bwrap");
-
-        // Read-only system mounts
-        cmd.arg("--ro-bind").arg("/usr").arg("/usr");
-        cmd.arg("--ro-bind").arg("/lib").arg("/lib");
-        cmd.arg("--ro-bind").arg("/lib64").arg("/lib64");
-        cmd.arg("--ro-bind").arg("/bin").arg("/bin");
-        cmd.arg("--ro-bind").arg("/sbin").arg("/sbin");
-
-        // Work directory (read-write)
-        cmd.arg("--bind").arg(&self.config.work_dir).arg("/work");
-
-        // Data directory (read-write, if specified)
-        if let Some(ref data_dir) = self.config.data_dir {
-            cmd.arg("--bind").arg(data_dir).arg("/data");
-        }
-
-        // Proc and dev
-        cmd.arg("--proc").arg("/proc");
-        cmd.arg("--dev").arg("/dev");
-
-        // Network namespace (deny by default)
-        if self.config.permissions.network.allow.is_empty() {
-            cmd.arg("--unshare-net");
-        }
-
-        // Set working directory
-        cmd.arg("--chdir").arg("/work");
-
-        // Environment variables
-        cmd.arg("--clearenv");
-        for (key, value) in &self.config.env_vars {
-            if self.policy.check_env(key) {
-                cmd.arg("--setenv").arg(key).arg(value);
-            }
-        }
-
-        // Execute command via sh
-        cmd.arg("--").arg("sh").arg("-c").arg(command);
-
-        // Set up stdout/stderr capture
-        cmd.stdout(std::process::Stdio::piped());
-        cmd.stderr(std::process::Stdio::piped());
-
-        // Spawn and wait with timeout
-        let child = cmd.spawn().context("Failed to spawn bwrap process")?;
-
-        match tokio_timeout(timeout, child.wait_with_output()).await {
-            Ok(Ok(output)) => Ok((
-                output.status.code().unwrap_or(-1),
-                String::from_utf8_lossy(&output.stdout).to_string(),
-                String::from_utf8_lossy(&output.stderr).to_string(),
-                false,
-            )),
-            Ok(Err(e)) => Err(e.into()),
-            Err(_) => {
-                // Timeout - kill the process
-                Ok((-1, String::new(), "Timeout exceeded".to_string(), true))
-            }
-        }
-    }
-
-    #[cfg(target_os = "macos")]
-    async fn execute_macos(
-        &self,
-        command: &str,
-        timeout: Duration,
-    ) -> Result<(i32, String, String, bool)> {
-        use tokio::process::Command;
-        use tokio::time::timeout as tokio_timeout;
-
-        // On macOS, we use a simpler approach (no bubblewrap equivalent)
-        // Just execute in the work directory with restricted env
         let mut cmd = Command::new("sh");
-        cmd.arg("-c").arg(command);
+        cmd.arg("-c").arg(command).current_dir(&self.config.work_dir);
 
-        // Set working directory
-        cmd.current_dir(&self.config.work_dir);
-
-        // Environment variables
         cmd.env_clear();
+        cmd.env("PATH", "/usr/bin:/bin:/usr/sbin:/sbin");
+
         for (key, value) in &self.config.env_vars {
             if self.policy.check_env(key) {
                 cmd.env(key, value);
             }
         }
 
-        // Set up stdout/stderr capture
+        let libsandbox = Self::libsandbox_path();
+        if libsandbox.exists() {
+            let policy_json = self.serialize_policy()?;
+            let policy_file =
+                std::env::temp_dir().join(format!("corral-policy-{}.json", std::process::id()));
+            std::fs::write(&policy_file, &policy_json)?;
+            let mut perms = std::fs::metadata(&policy_file)?.permissions();
+            perms.set_mode(0o600);
+            std::fs::set_permissions(&policy_file, perms)?;
+
+            cmd.env("LD_PRELOAD", &libsandbox);
+            cmd.env("SANDBOX_POLICY_FILE", &policy_file);
+        }
+
         cmd.stdout(std::process::Stdio::piped());
         cmd.stderr(std::process::Stdio::piped());
 
-        // Spawn and wait with timeout
         let child = cmd.spawn().context("Failed to spawn process")?;
 
         match tokio_timeout(timeout, child.wait_with_output()).await {
@@ -230,10 +237,62 @@ impl Sandbox {
                 false,
             )),
             Ok(Err(e)) => Err(e.into()),
-            Err(_) => {
-                // Timeout - kill the process
-                Ok((-1, String::new(), "Timeout exceeded".to_string(), true))
+            Err(_) => Ok((-1, String::new(), "Timeout exceeded".to_string(), true)),
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    async fn execute_macos(
+        &self,
+        command: &str,
+        timeout: Duration,
+    ) -> Result<(i32, String, String, bool)> {
+        use std::os::unix::fs::PermissionsExt;
+        use tokio::process::Command;
+        use tokio::time::timeout as tokio_timeout;
+
+        let mut cmd = Command::new("sh");
+        cmd.arg("-c").arg(command);
+        cmd.current_dir(&self.config.work_dir);
+
+        cmd.env_clear();
+        cmd.env("PATH", "/usr/bin:/bin:/usr/sbin:/sbin");
+
+        for (key, value) in &self.config.env_vars {
+            if self.policy.check_env(key) {
+                cmd.env(key, value);
             }
+        }
+
+        let libsandbox = Self::libsandbox_path();
+        if libsandbox.exists() {
+            let policy_json = self.serialize_policy()?;
+            let policy_file =
+                std::env::temp_dir().join(format!("corral-policy-{}.json", std::process::id()));
+            std::fs::write(&policy_file, &policy_json)?;
+            let mut perms = std::fs::metadata(&policy_file)?.permissions();
+            perms.set_mode(0o600);
+            std::fs::set_permissions(&policy_file, perms)?;
+
+            cmd.env("DYLD_INSERT_LIBRARIES", &libsandbox);
+            cmd.env("DYLD_FORCE_FLAT_NAMESPACE", "1");
+            cmd.env("SANDBOX_POLICY_FILE", &policy_file);
+        }
+
+        cmd.stdout(std::process::Stdio::piped());
+        cmd.stderr(std::process::Stdio::piped());
+
+        let child = cmd.spawn().context("Failed to spawn process")?;
+
+        match tokio_timeout(timeout, child.wait_with_output()).await {
+            Ok(Ok(output)) => Ok((
+                output.status.code().unwrap_or(-1),
+                String::from_utf8_lossy(&output.stdout).to_string(),
+                String::from_utf8_lossy(&output.stderr).to_string(),
+                false,
+            )),
+            Ok(Err(e)) => Err(e.into()),
+            Err(_) => Ok((-1, String::new(), "Timeout exceeded".to_string(), true)),
         }
     }
 }

@@ -126,3 +126,44 @@ pub async fn handle_clipboard(
         method
     ))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use corral_core::{Permissions, ServicePermission};
+    use std::collections::HashMap;
+
+    #[tokio::test]
+    async fn reminders_add_denied_when_service_not_permitted() {
+        let policy = PolicyEngine::new(Permissions::builder().build());
+        let params = json!({"list":"Reminders","title":"x"});
+
+        let res = handle_reminders("add", &params, &policy).await;
+        assert!(res.is_err());
+        assert!(res.unwrap_err().to_string().contains("not allowed"));
+    }
+
+    #[tokio::test]
+    async fn reminders_add_fails_closed_when_scope_restricted() {
+        let mut scope = HashMap::new();
+        scope.insert("lists".to_string(), json!(["Shopping"]));
+
+        let mut permissions = Permissions::builder().build();
+        permissions.services.insert(
+            "reminders".to_string(),
+            ServicePermission {
+                access: "readwrite".to_string(),
+                scope,
+            },
+        );
+        let policy = PolicyEngine::new(permissions);
+        let params = json!({"list":"Work","title":"x"});
+
+        let res = handle_reminders("add", &params, &policy).await;
+        assert!(res.is_err());
+
+        // Either blocked by scope check, or adapter unavailable on current machine.
+        let msg = res.unwrap_err().to_string();
+        assert!(msg.contains("scope") || msg.contains("not available"));
+    }
+}
