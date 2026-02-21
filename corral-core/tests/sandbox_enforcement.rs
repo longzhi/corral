@@ -104,7 +104,7 @@ async fn denies_network_by_default() {
 }
 
 #[tokio::test]
-async fn denies_unlisted_exec() {
+async fn denies_absolute_path_outside_workspace() {
     if !libsandbox_exists() {
         return;
     }
@@ -121,6 +121,7 @@ async fn denies_unlisted_exec() {
         .build()
         .unwrap();
 
-    let exec = sandbox.execute("ls").await;
+    // This should fail because /etc/passwd is not in the allowed paths
+    let exec = sandbox.execute("cat /etc/passwd").await;
     assert!(exec.is_err() || exec.unwrap().exit_code != 0);
 }

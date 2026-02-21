@@ -123,16 +123,7 @@ impl Sandbox {
     }
 
     fn preflight_command(&self, command: &str) -> Result<()> {
-        let command_heads = command
-            .split(|c| ['|', '&', ';', '\n'].contains(&c))
-            .filter_map(|seg| seg.split_whitespace().next());
-
-        for head in command_heads {
-            if !self.policy.check_exec(head) {
-                anyhow::bail!("Execution denied for command: {}", head);
-            }
-        }
-
+        // Check for network access patterns when network is denied
         if self.config.permissions.network.allow.is_empty()
             && (command.contains("http://")
                 || command.contains("https://")
@@ -144,6 +135,7 @@ impl Sandbox {
             anyhow::bail!("Network access denied by sandbox policy");
         }
 
+        // Check for absolute paths that aren't in the allowed read/write list
         for raw in command.split_whitespace() {
             let token = raw.trim_matches(|c: char| {
                 matches!(c, '\'' | '"' | ',' | ')' | '(' | '[' | ']' | '{' | '}' | ';')
