@@ -1,6 +1,7 @@
 //! macOS sandbox using DYLD_INSERT_LIBRARIES
 
 use super::{ExecutionResult, Runtime};
+#[cfg(feature = "broker")]
 use crate::broker::BrokerHandle;
 use crate::manifest::Manifest;
 use anyhow::{Context, Result};
@@ -83,9 +84,9 @@ impl MacOSRuntime {
     }
 }
 
-#[async_trait::async_trait]
-impl Runtime for MacOSRuntime {
-    async fn execute(&self, broker: &BrokerHandle) -> Result<ExecutionResult> {
+impl MacOSRuntime {
+    /// Common execute logic with optional broker socket
+    async fn execute_internal(&self, broker_socket: Option<PathBuf>) -> Result<ExecutionResult> {
         let mut cmd = Command::new(&self.manifest.runtime);
 
         // Entry point
@@ -100,8 +101,12 @@ impl Runtime for MacOSRuntime {
 
         cmd.env("SKILL_DIR", &self.skill_path)
             .env("WORK_DIR", &self.work_dir)
-            .env("DATA_DIR", &self.data_dir)
-            .env("SANDBOX_SOCKET", &broker.socket_path);
+            .env("DATA_DIR", &self.data_dir);
+
+        // Add broker socket if provided
+        if let Some(socket) = broker_socket {
+            cmd.env("SANDBOX_SOCKET", socket);
+        }
 
         // Add allowed environment variables
         if let Some(env_vars) = &self.manifest.permissions.env {
@@ -125,9 +130,19 @@ impl Runtime for MacOSRuntime {
             // Serialize policy to JSON for libsandbox
             let policy_json = Self::serialize_policy(&self.manifest)?;
 
+            // Write policy to temporary file with restricted permissions (mode 0600)
+            let policy_file =
+                std::env::temp_dir().join(format!("corral-policy-{}.json", std::process::id()));
+
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::write(&policy_file, &policy_json)?;
+            let mut perms = std::fs::metadata(&policy_file)?.permissions();
+            perms.set_mode(0o600); // Owner read/write only
+            std::fs::set_permissions(&policy_file, perms)?;
+
             cmd.env("DYLD_INSERT_LIBRARIES", &libsandbox);
             cmd.env("DYLD_FORCE_FLAT_NAMESPACE", "1");
-            cmd.env("SANDBOX_POLICY", policy_json);
+            cmd.env("SANDBOX_POLICY_FILE", &policy_file);
         }
 
         // Process group isolation
@@ -152,5 +167,19 @@ impl Runtime for MacOSRuntime {
             stdout: String::from_utf8_lossy(&output.stdout).to_string(),
             stderr: String::from_utf8_lossy(&output.stderr).to_string(),
         })
+    }
+}
+
+#[async_trait::async_trait]
+impl Runtime for MacOSRuntime {
+    #[cfg(feature = "broker")]
+    async fn execute(&self, broker: &BrokerHandle) -> Result<ExecutionResult> {
+        self.execute_internal(Some(broker.socket_path.clone()))
+            .await
+    }
+
+    #[cfg(not(feature = "broker"))]
+    async fn execute_no_broker(&self) -> Result<ExecutionResult> {
+        self.execute_internal(None).await
     }
 }

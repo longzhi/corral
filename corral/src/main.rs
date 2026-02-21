@@ -2,8 +2,10 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
+#[cfg(feature = "broker")]
 mod adapters;
 mod audit;
+#[cfg(feature = "broker")]
 mod broker;
 mod manifest;
 mod platform;
@@ -69,41 +71,73 @@ async fn main() -> Result<()> {
 
 async fn run_skill(skill_path: PathBuf, _args: Vec<String>) -> Result<()> {
     use crate::manifest::Manifest;
+    #[cfg(feature = "broker")]
     use corral_core::PolicyEngine;
 
     // Load and parse manifest
     let manifest = Manifest::load(&skill_path)?;
     tracing::info!("Loaded skill: {} v{}", manifest.name, manifest.version);
 
-    // Create policy engine from manifest permissions
-    let policy = PolicyEngine::new(manifest.to_permissions());
-
     // Setup sandbox environment
     let runtime = platform::create_runtime(&manifest, &skill_path)?;
 
-    // Start broker
-    let broker_handle = broker::start_broker(policy.clone()).await?;
+    #[cfg(feature = "broker")]
+    {
+        // Create policy engine from manifest permissions
+        let policy = PolicyEngine::new(manifest.to_permissions());
 
-    // Start watchdog
-    let watchdog = watchdog::Watchdog::new(manifest.clone());
+        // Start broker
+        let broker_handle = broker::start_broker(policy).await?;
 
-    // Execute skill
-    tracing::info!("Executing skill...");
-    let result = runtime.execute(&broker_handle).await?;
+        // Start watchdog
+        let watchdog = watchdog::Watchdog::new(manifest.clone());
 
-    // Stop watchdog
-    watchdog.stop()?;
+        // Execute skill
+        tracing::info!("Executing skill...");
+        let result = runtime.execute(&broker_handle).await?;
 
-    // Generate audit log
-    audit::log_execution(&manifest, &broker_handle, result.exit_code).await?;
+        // Stop watchdog
+        watchdog.stop()?;
 
-    if result.exit_code == 0 {
-        tracing::info!("Skill completed successfully");
-        println!("{}", result.stdout);
-    } else {
-        tracing::error!("Skill failed with exit code: {}", result.exit_code);
-        eprintln!("{}", result.stderr);
-        std::process::exit(result.exit_code);
+        // Generate audit log
+        audit::log_execution(&manifest, &broker_handle, result.exit_code).await?;
+
+        if result.exit_code == 0 {
+            tracing::info!("Skill completed successfully");
+            println!("{}", result.stdout);
+        } else {
+            tracing::error!("Skill failed with exit code: {}", result.exit_code);
+            eprintln!("{}", result.stderr);
+            std::process::exit(result.exit_code);
+        }
+    }
+
+    #[cfg(not(feature = "broker"))]
+    {
+        // Without broker: simple sandbox isolation only
+        tracing::info!("Running in sandbox-only mode (no broker)");
+
+        // Start watchdog
+        let watchdog = watchdog::Watchdog::new(manifest.clone());
+
+        // Execute skill without broker
+        tracing::info!("Executing skill...");
+        let result = runtime.execute_no_broker().await?;
+
+        // Stop watchdog
+        watchdog.stop()?;
+
+        // Generate simple audit log
+        audit::log_execution_simple(&manifest, result.exit_code).await?;
+
+        if result.exit_code == 0 {
+            tracing::info!("Skill completed successfully");
+            println!("{}", result.stdout);
+        } else {
+            tracing::error!("Skill failed with exit code: {}", result.exit_code);
+            eprintln!("{}", result.stderr);
+            std::process::exit(result.exit_code);
+        }
     }
 
     Ok(())

@@ -48,6 +48,37 @@ corral approve --skill ./my-skill
 corral run --skill ./my-skill
 ```
 
+## Feature Flags
+
+Corral supports optional feature flags to reduce dependencies for different use cases:
+
+### Available Features
+
+- **`broker`** (enabled by default) — Includes the JSON-RPC broker server for service proxying
+  - Adds: `tokio/net`, `reqwest`, service adapters
+  - Omit this if you only need sandbox isolation without service proxying
+
+### Building Without Broker
+
+For lightweight embedding (just sandboxing, no service broker):
+
+```bash
+# Build corral-core without broker dependencies
+cargo build --no-default-features -p corral-core
+
+# Build corral CLI without broker (sandbox-only mode)
+cargo build --no-default-features -p corral
+```
+
+In sandbox-only mode:
+- ✅ File system isolation works
+- ✅ Network isolation works  
+- ✅ Process isolation works
+- ❌ Service adapters (reminders, calendar, etc.) are not available
+- ❌ JSON-RPC broker socket is not created
+
+This is useful for downstream projects like `nanocrab` that only need the sandbox engine without pulling in heavy async networking dependencies.
+
 ## Library Usage
 
 Corral can also be used as a Rust library for embedding sandboxed execution in your applications.

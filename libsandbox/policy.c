@@ -5,6 +5,7 @@
 #include <string.h>
 #include <fnmatch.h>
 #include <pthread.h>
+#include <unistd.h>
 
 /* Global policy structure */
 typedef struct {
@@ -103,6 +104,82 @@ static bool match_host_list(const char *host, int port, char **patterns, size_t 
     return false;
 }
 
+/* Helper: Load policy from file descriptor (Linux only) */
+#ifdef __linux__
+static char* load_policy_from_fd(int fd) {
+    if (fd < 0) return NULL;
+    
+    /* Read from /proc/self/fd/{fd} */
+    char fd_path[64];
+    snprintf(fd_path, sizeof(fd_path), "/proc/self/fd/%d", fd);
+    
+    FILE *f = fopen(fd_path, "r");
+    if (!f) return NULL;
+    
+    fseek(f, 0, SEEK_END);
+    long size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    
+    if (size <= 0 || size > 10*1024*1024) { /* Max 10MB policy */
+        fclose(f);
+        return NULL;
+    }
+    
+    char *content = malloc(size + 1);
+    if (!content) {
+        fclose(f);
+        return NULL;
+    }
+    
+    size_t read_bytes = fread(content, 1, size, f);
+    content[read_bytes] = '\0';
+    fclose(f);
+    
+    return content;
+}
+#endif
+
+/* Helper: Load policy from file path */
+static char* load_policy_from_file(const char *path) {
+    if (!path) return NULL;
+    
+    FILE *f = fopen(path, "r");
+    if (!f) return NULL;
+    
+    fseek(f, 0, SEEK_END);
+    long size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    
+    if (size <= 0 || size > 10*1024*1024) { /* Max 10MB policy */
+        fclose(f);
+        return NULL;
+    }
+    
+    char *content = malloc(size + 1);
+    if (!content) {
+        fclose(f);
+        return NULL;
+    }
+    
+    size_t read_bytes = fread(content, 1, size, f);
+    content[read_bytes] = '\0';
+    fclose(f);
+    
+    /* Security: Immediately unlink the file after reading (read-once semantics) */
+    unlink(path);
+    
+    return content;
+}
+
+/* Helper: Zero out memory buffer (prevent memory dumps) */
+static void secure_zero(void *ptr, size_t len) {
+    if (!ptr) return;
+    volatile unsigned char *p = (volatile unsigned char *)ptr;
+    while (len--) {
+        *p++ = 0;
+    }
+}
+
 bool policy_init(void) {
     pthread_mutex_lock(&g_policy_mutex);
     
@@ -111,36 +188,61 @@ bool policy_init(void) {
         return true;
     }
     
-    /* Try to load policy from environment */
-    const char *policy_json = getenv("SANDBOX_POLICY");
-    const char *policy_file = getenv("SANDBOX_POLICY_FILE");
-    
+    char *policy_json_raw = NULL;
     cJSON *root = NULL;
     
-    if (policy_json) {
-        /* Parse inline JSON */
-        root = cJSON_Parse(policy_json);
-    } else if (policy_file) {
-        /* Read from file */
-        FILE *f = fopen(policy_file, "r");
-        if (f) {
-            fseek(f, 0, SEEK_END);
-            long size = ftell(f);
-            fseek(f, 0, SEEK_SET);
-            
-            char *content = malloc(size + 1);
-            if (content) {
-                fread(content, 1, size, f);
-                content[size] = '\0';
-                root = cJSON_Parse(content);
-                free(content);
-            }
-            fclose(f);
+    /* Try loading policy in order of security preference:
+     * 1. SANDBOX_POLICY_FD (Linux only, most secure - memfd)
+     * 2. SANDBOX_POLICY_FILE (cross-platform, secure - temp file)
+     * 3. SANDBOX_POLICY (env var, fallback - less secure)
+     */
+    
+#ifdef __linux__
+    const char *fd_str = getenv("SANDBOX_POLICY_FD");
+    if (fd_str) {
+        int fd = atoi(fd_str);
+        policy_json_raw = load_policy_from_fd(fd);
+        /* Clear env var for security */
+        unsetenv("SANDBOX_POLICY_FD");
+    }
+#endif
+    
+    if (!policy_json_raw) {
+        const char *policy_file = getenv("SANDBOX_POLICY_FILE");
+        if (policy_file) {
+            policy_json_raw = load_policy_from_file(policy_file);
+            /* Clear env var for security */
+            unsetenv("SANDBOX_POLICY_FILE");
         }
     }
     
-    if (!root) {
+    if (!policy_json_raw) {
+        const char *policy_env = getenv("SANDBOX_POLICY");
+        if (policy_env) {
+            policy_json_raw = strdup(policy_env);
+            /* Clear env var for security */
+            unsetenv("SANDBOX_POLICY");
+        }
+    }
+    
+    if (!policy_json_raw) {
         /* No policy found - deny everything */
+        g_policy.initialized = true;
+        pthread_mutex_unlock(&g_policy_mutex);
+        return true;
+    }
+    
+    /* Parse JSON policy */
+    root = cJSON_Parse(policy_json_raw);
+    
+    /* Security: Zero out the raw JSON buffer after parsing */
+    size_t json_len = strlen(policy_json_raw);
+    secure_zero(policy_json_raw, json_len);
+    free(policy_json_raw);
+    policy_json_raw = NULL;
+    
+    if (!root) {
+        /* Invalid JSON - deny everything */
         g_policy.initialized = true;
         pthread_mutex_unlock(&g_policy_mutex);
         return true;

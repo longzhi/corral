@@ -6,6 +6,7 @@ pub mod linux;
 #[cfg(target_os = "macos")]
 pub mod macos;
 
+#[cfg(feature = "broker")]
 use crate::broker::BrokerHandle;
 use crate::manifest::Manifest;
 use anyhow::Result;
@@ -21,7 +22,11 @@ pub struct ExecutionResult {
 /// Platform runtime interface
 #[async_trait::async_trait]
 pub trait Runtime {
+    #[cfg(feature = "broker")]
     async fn execute(&self, broker: &BrokerHandle) -> Result<ExecutionResult>;
+
+    #[cfg(not(feature = "broker"))]
+    async fn execute_no_broker(&self) -> Result<ExecutionResult>;
 }
 
 /// Create platform-specific runtime

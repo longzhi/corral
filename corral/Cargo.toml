@@ -11,6 +11,10 @@ keywords = ["sandbox", "security", "capabilities", "permissions", "isolation"]
 categories = ["command-line-utilities", "development-tools", "os"]
 rust-version.workspace = true
 
+[features]
+default = ["broker"]
+broker = ["tokio/net", "reqwest"]
+
 [dependencies]
 corral-core = { path = "../corral-core" }
 
@@ -22,7 +26,7 @@ anyhow.workspace = true
 thiserror.workspace = true
 clap.workspace = true
 glob.workspace = true
-reqwest.workspace = true
+reqwest = { workspace = true, optional = true }
 tracing.workspace = true
 tracing-subscriber.workspace = true
 

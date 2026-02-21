@@ -89,6 +89,7 @@ pub enum AccessLevel {
 
 impl Manifest {
     /// Convert manifest permissions to corral_core::Permissions
+    #[cfg(feature = "broker")]
     pub fn to_permissions(&self) -> corral_core::Permissions {
         use corral_core::permissions::ServicePermission;
         use std::collections::HashMap;

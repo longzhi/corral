@@ -1,6 +1,7 @@
 //! Linux sandbox using bubblewrap (bwrap) or LD_PRELOAD
 
 use super::{ExecutionResult, Runtime};
+#[cfg(feature = "broker")]
 use crate::broker::BrokerHandle;
 use crate::manifest::Manifest;
 use anyhow::{Context, Result};
@@ -101,7 +102,7 @@ impl LinuxRuntime {
     }
 
     /// Build bwrap command
-    fn build_bwrap_command(&self, broker: &BrokerHandle) -> Command {
+    fn build_bwrap_command(&self, broker_socket: Option<&PathBuf>) -> Command {
         let mut cmd = Command::new("bwrap");
 
         // Basic isolation
@@ -157,10 +158,11 @@ impl LinuxRuntime {
             .arg("/work")
             .arg("--setenv")
             .arg("DATA_DIR")
-            .arg("/data")
-            .arg("--setenv")
-            .arg("SANDBOX_SOCKET")
-            .arg(&broker.socket_path);
+            .arg("/data");
+
+        if let Some(socket) = broker_socket {
+            cmd.arg("--setenv").arg("SANDBOX_SOCKET").arg(socket);
+        }
 
         // Add allowed environment variables
         if let Some(env_vars) = &self.manifest.permissions.env {
@@ -186,7 +188,7 @@ impl LinuxRuntime {
     }
 
     /// Build LD_PRELOAD command with libsandbox.so
-    fn build_preload_command(&self, broker: &BrokerHandle) -> Result<Command> {
+    fn build_preload_command(&self, broker_socket: Option<&PathBuf>) -> Result<Command> {
         let mut cmd = Command::new(&self.manifest.runtime);
 
         // Entry point
@@ -201,8 +203,11 @@ impl LinuxRuntime {
 
         cmd.env("SKILL_DIR", &self.skill_path)
             .env("WORK_DIR", &self.work_dir)
-            .env("DATA_DIR", &self.data_dir)
-            .env("SANDBOX_SOCKET", &broker.socket_path);
+            .env("DATA_DIR", &self.data_dir);
+
+        if let Some(socket) = broker_socket {
+            cmd.env("SANDBOX_SOCKET", socket);
+        }
 
         // Add allowed environment variables
         if let Some(env_vars) = &self.manifest.permissions.env {
@@ -224,8 +229,20 @@ impl LinuxRuntime {
 
         if libsandbox.exists() {
             let policy_json = self.serialize_policy()?;
+
+            // Write policy to temporary file with restricted permissions (mode 0600)
+            // libsandbox will read and immediately unlink it for security
+            let policy_file =
+                std::env::temp_dir().join(format!("corral-policy-{}.json", std::process::id()));
+
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::write(&policy_file, &policy_json)?;
+            let mut perms = std::fs::metadata(&policy_file)?.permissions();
+            perms.set_mode(0o600); // Owner read/write only
+            std::fs::set_permissions(&policy_file, perms)?;
+
             cmd.env("LD_PRELOAD", &libsandbox);
-            cmd.env("SANDBOX_POLICY", policy_json);
+            cmd.env("SANDBOX_POLICY_FILE", &policy_file);
         }
 
         // Process group isolation
@@ -241,12 +258,11 @@ impl LinuxRuntime {
     }
 }
 
-#[async_trait::async_trait]
-impl Runtime for LinuxRuntime {
-    async fn execute(&self, broker: &BrokerHandle) -> Result<ExecutionResult> {
+impl LinuxRuntime {
+    async fn execute_internal(&self, broker_socket: Option<&PathBuf>) -> Result<ExecutionResult> {
         let mut cmd = match self.mode {
-            LinuxIsolationMode::Bwrap => self.build_bwrap_command(broker),
-            LinuxIsolationMode::Preload => self.build_preload_command(broker)?,
+            LinuxIsolationMode::Bwrap => self.build_bwrap_command(broker_socket),
+            LinuxIsolationMode::Preload => self.build_preload_command(broker_socket)?,
         };
 
         cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
@@ -261,5 +277,18 @@ impl Runtime for LinuxRuntime {
             stdout: String::from_utf8_lossy(&output.stdout).to_string(),
             stderr: String::from_utf8_lossy(&output.stderr).to_string(),
         })
+    }
+}
+
+#[async_trait::async_trait]
+impl Runtime for LinuxRuntime {
+    #[cfg(feature = "broker")]
+    async fn execute(&self, broker: &BrokerHandle) -> Result<ExecutionResult> {
+        self.execute_internal(Some(&broker.socket_path)).await
+    }
+
+    #[cfg(not(feature = "broker"))]
+    async fn execute_no_broker(&self) -> Result<ExecutionResult> {
+        self.execute_internal(None).await
     }
 }

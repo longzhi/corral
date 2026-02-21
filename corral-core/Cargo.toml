@@ -12,19 +12,15 @@ categories = ["development-tools", "os"]
 rust-version.workspace = true
 
 [dependencies]
-tokio.workspace = true
+# Minimal dependencies - no heavy async runtime, no network
+tokio = { version = "1", features = ["process", "io-util", "time"] }
 serde.workspace = true
 serde_json.workspace = true
 anyhow.workspace = true
 thiserror.workspace = true
 glob.workspace = true
 
-nix = { version = "0.27", features = ["process", "signal"] }
-libc = "0.2"
 async-trait = "0.1"
-dirs = "5"
-chrono = { version = "0.4", features = ["serde"] }
-which = "6"
 
 [dev-dependencies]
 tokio-test = "0.4"
