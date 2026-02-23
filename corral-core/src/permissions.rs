@@ -1,7 +1,8 @@
 //! Standalone permissions definition and builder API
 
+use glob::Pattern;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 
 /// Standalone permissions definition - no Manifest dependency
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
@@ -45,29 +46,11 @@ impl Permissions {
     pub fn intersect(&self, other: &Permissions) -> Permissions {
         Permissions {
             fs: FsPermissions {
-                read: self
-                    .fs
-                    .read
-                    .iter()
-                    .filter(|p| other.fs.read.contains(p))
-                    .cloned()
-                    .collect(),
-                write: self
-                    .fs
-                    .write
-                    .iter()
-                    .filter(|p| other.fs.write.contains(p))
-                    .cloned()
-                    .collect(),
+                read: intersect_patterns(&self.fs.read, &other.fs.read),
+                write: intersect_patterns(&self.fs.write, &other.fs.write),
             },
             network: NetworkPermissions {
-                allow: self
-                    .network
-                    .allow
-                    .iter()
-                    .filter(|h| other.network.allow.contains(h))
-                    .cloned()
-                    .collect(),
+                allow: intersect_patterns(&self.network.allow, &other.network.allow),
             },
             exec: self
                 .exec
@@ -94,6 +77,48 @@ impl Permissions {
                 .collect(),
         }
     }
+}
+
+fn intersect_patterns(left: &[String], right: &[String]) -> Vec<String> {
+    let mut out = BTreeSet::new();
+
+    for l in left {
+        for r in right {
+            if let Some(p) = intersect_two_patterns(l, r) {
+                out.insert(p);
+            }
+        }
+    }
+
+    out.into_iter().collect()
+}
+
+fn intersect_two_patterns(a: &str, b: &str) -> Option<String> {
+    if a == b {
+        return Some(a.to_string());
+    }
+
+    // If one pattern matches the other literally, keep the more specific one.
+    let a_matches_b = Pattern::new(a).map(|p| p.matches(b)).unwrap_or(false);
+    let b_matches_a = Pattern::new(b).map(|p| p.matches(a)).unwrap_or(false);
+
+    match (a_matches_b, b_matches_a) {
+        (true, false) => Some(more_specific(a, b).to_string()),
+        (false, true) => Some(more_specific(a, b).to_string()),
+        (true, true) => Some(more_specific(a, b).to_string()),
+        (false, false) => None,
+    }
+}
+
+fn more_specific<'a>(a: &'a str, b: &'a str) -> &'a str {
+    let sa = specificity_score(a);
+    let sb = specificity_score(b);
+    if sa >= sb { a } else { b }
+}
+
+fn specificity_score(s: &str) -> usize {
+    let wildcard_penalty = s.matches('*').count() * 10 + s.matches('?').count() * 5;
+    s.len().saturating_sub(wildcard_penalty)
 }
 
 /// Builder API for Permissions
@@ -248,6 +273,20 @@ mod tests {
         assert_eq!(intersection.fs.read, vec!["/usr/**"]);
         assert_eq!(intersection.fs.write, vec!["/tmp/**"]);
         assert_eq!(intersection.exec, vec!["curl"]);
+    }
+
+    #[test]
+    fn test_intersect_network_pattern_with_literal() {
+        let perms1 = Permissions::builder()
+            .network_allow(["*.example.com:443"])
+            .build();
+
+        let perms2 = Permissions::builder()
+            .network_allow(["api.example.com:443"])
+            .build();
+
+        let intersection = perms1.intersect(&perms2);
+        assert_eq!(intersection.network.allow, vec!["api.example.com:443"]);
     }
 
     #[test]
