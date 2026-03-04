@@ -135,11 +135,19 @@ impl Sandbox {
             anyhow::bail!("Network access denied by sandbox policy");
         }
 
+        // Strip heredoc content before checking paths.
+        // Heredocs embed arbitrary text that should not be scanned for path tokens.
+        let command_without_heredoc = Self::strip_heredoc_content(command);
+
         // Check for absolute paths that aren't in the allowed read/write list
-        for raw in command.split_whitespace() {
+        for raw in command_without_heredoc.split_whitespace() {
             let token = raw.trim_matches(|c: char| {
                 matches!(c, '\'' | '"' | ',' | ')' | '(' | '[' | ']' | '{' | '}' | ';')
             });
+            // Skip bare "/" — it's an arithmetic operator or separator, not a path
+            if token == "/" {
+                continue;
+            }
             if token.starts_with('/')
                 && !self.policy.check_path_read(token)
                 && !self.policy.check_path_write(token)
@@ -149,6 +157,100 @@ impl Sandbox {
         }
 
         Ok(())
+    }
+
+    /// Strip heredoc body content from a command string.
+    ///
+    /// Detects patterns like `<<EOF`, `<<'EOF'`, `<<"EOF"`, `<<-EOF` and removes
+    /// everything from the heredoc start through the closing tag (or end of string).
+    /// Only the command portion before the heredoc body is returned for scanning.
+    fn strip_heredoc_content(command: &str) -> String {
+        let mut result = String::new();
+        let mut remaining = command;
+
+        loop {
+            // Find the next `<<` operator
+            let Some(heredoc_pos) = remaining.find("<<") else {
+                result.push_str(remaining);
+                break;
+            };
+
+            // Keep everything before the `<<`
+            result.push_str(&remaining[..heredoc_pos]);
+
+            let after_arrows = &remaining[heredoc_pos + 2..];
+
+            // Skip optional `-` (for <<-EOF)
+            let after_dash = after_arrows.strip_prefix('-').unwrap_or(after_arrows);
+
+            // Skip optional whitespace
+            let after_ws = after_dash.trim_start();
+
+            // Extract the tag: strip optional quotes, then read alphanumeric/underscore
+            let (tag, after_tag_and_quote) = Self::extract_heredoc_tag(after_ws);
+
+            if tag.is_empty() {
+                // Not a heredoc (e.g., `<<` used for bit shift or something else)
+                result.push_str("<<");
+                remaining = after_arrows;
+                continue;
+            }
+
+            // Drop the `<<[-][\'\"?]TAG[\'\"?]` from output since it's part of the heredoc syntax
+            // We already pushed everything before `<<` into result.
+
+            // Now find the closing tag on its own line (after a newline)
+            let end_pattern = format!("\n{}\n", tag);
+            let end_pattern_eof = format!("\n{}", tag);
+
+            // Calculate how far we consumed after the original `<<`
+            let consumed_for_tag = remaining.len() - after_tag_and_quote.len();
+            let heredoc_body_start = &remaining[consumed_for_tag..];
+
+            if let Some(pos) = heredoc_body_start.find(&end_pattern) {
+                remaining = &heredoc_body_start[pos + end_pattern.len()..];
+            } else if heredoc_body_start.ends_with(&end_pattern_eof) {
+                remaining = "";
+            } else {
+                // No closing tag found — treat the rest as heredoc content
+                remaining = "";
+            }
+        }
+
+        result
+    }
+
+    /// Extract a heredoc tag from the text after `<<` (and optional `-`/whitespace).
+    /// Returns (tag, remaining_after_tag).
+    fn extract_heredoc_tag(s: &str) -> (&str, &str) {
+        let (quote_char, tag_start) = if let Some(rest) = s.strip_prefix('\'') {
+            (Some('\''), rest)
+        } else if let Some(rest) = s.strip_prefix('"') {
+            (Some('"'), rest)
+        } else {
+            (None, s)
+        };
+
+        // Read tag characters (alphanumeric + underscore)
+        let tag_end = tag_start
+            .find(|c: char| !c.is_alphanumeric() && c != '_')
+            .unwrap_or(tag_start.len());
+
+        let tag = &tag_start[..tag_end];
+
+        if tag.is_empty() {
+            return ("", s);
+        }
+
+        let after_tag = &tag_start[tag_end..];
+
+        // Skip closing quote if present
+        let after_quote = match quote_char {
+            Some(q) => after_tag.strip_prefix(q).unwrap_or(after_tag),
+            None => after_tag,
+        };
+
+        (tag, after_quote)
     }
 
     fn serialize_policy(&self) -> Result<String> {
@@ -509,5 +611,54 @@ mod tests {
 
         // Clean up
         std::fs::remove_dir_all(&temp_dir).ok();
+    }
+
+    #[test]
+    fn test_preflight_ignores_slash_in_heredoc_body() {
+        let sandbox = SandboxBuilder::new()
+            .fs_read(["/tmp/**"])
+            .fs_write(["/tmp/**"])
+            .build()
+            .unwrap();
+        let command = "cat > /tmp/note.md <<'EOF'\nWeather: 11C / -1C\nSome text with / in it\nEOF";
+
+        let result = sandbox.preflight_command(command);
+        assert!(result.is_ok(), "heredoc content should not trigger path check: {:?}", result.err());
+    }
+
+    #[test]
+    fn test_preflight_ignores_absolute_path_in_heredoc_body() {
+        let sandbox = SandboxBuilder::new()
+            .fs_read(["/tmp/**"])
+            .fs_write(["/tmp/**"])
+            .build()
+            .unwrap();
+        let command = "cat > /tmp/note.md <<EOF\nDo not treat /etc/passwd as command arg\nEOF";
+
+        let result = sandbox.preflight_command(command);
+        assert!(result.is_ok(), "heredoc content should not trigger path check: {:?}", result.err());
+    }
+
+    #[test]
+    fn test_preflight_still_checks_real_absolute_path_argument() {
+        let sandbox = SandboxBuilder::new().build().unwrap();
+        let result = sandbox.preflight_command("cat /etc/passwd");
+
+        assert!(result.is_err());
+        assert!(
+            result
+                .err()
+                .unwrap()
+                .to_string()
+                .contains("Path access denied for: /etc/passwd")
+        );
+    }
+
+    #[test]
+    fn test_preflight_skips_standalone_slash_token() {
+        let sandbox = SandboxBuilder::new().build().unwrap();
+        let result = sandbox.preflight_command("echo 11 / -1");
+
+        assert!(result.is_ok());
     }
 }
