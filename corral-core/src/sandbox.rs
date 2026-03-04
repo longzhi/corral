@@ -132,12 +132,21 @@ impl Sandbox {
                 || command.contains(" wget ")
                 || command.starts_with("wget "))
         {
+            let cmd_preview = if command.len() > 200 {
+                format!("{}...", &command[..200])
+            } else {
+                command.to_string()
+            };
+            tracing::warn!("Network access denied by sandbox policy: {}", cmd_preview);
             anyhow::bail!("Network access denied by sandbox policy");
         }
 
         // Strip heredoc content before checking paths.
         // Heredocs embed arbitrary text that should not be scanned for path tokens.
         let command_without_heredoc = Self::strip_heredoc_content(command);
+        if command_without_heredoc.len() < command.len() {
+            tracing::debug!("Heredoc content stripped from command");
+        }
 
         // Check for absolute paths that aren't in the allowed read/write list
         for raw in command_without_heredoc.split_whitespace() {
@@ -152,10 +161,17 @@ impl Sandbox {
                 && !self.policy.check_path_read(token)
                 && !self.policy.check_path_write(token)
             {
+                tracing::warn!(
+                    "Path access denied: token={}, read_patterns={:?}, write_patterns={:?}",
+                    token,
+                    self.config.permissions.fs.read,
+                    self.config.permissions.fs.write
+                );
                 anyhow::bail!("Path access denied for: {}", token);
             }
         }
 
+        tracing::debug!("Command passed preflight checks");
         Ok(())
     }
 
